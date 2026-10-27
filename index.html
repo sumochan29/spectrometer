@@ -15,16 +15,16 @@
           <span class="wordmark-mark" aria-hidden="true"></span>
           <span>Webcam Spectrometer</span>
         </a>
-        <span class="edition">M1 · LIVE VIEW</span>
+        <span class="edition">M2 · CROP PREVIEW</span>
       </header>
 
       <section class="workspace" aria-labelledby="page-title">
         <div class="workspace-heading">
           <div>
             <p class="eyebrow">OPTICAL INSTRUMENT / 01</p>
-            <h1 id="page-title">Spectrum preview</h1>
+            <h1 id="page-title">Spectrum crop</h1>
           </div>
-          <p class="workspace-note">Live sensor image</p>
+          <p class="workspace-note">Select the measured band</p>
         </div>
 
         <div class="source-bar">
@@ -54,18 +54,36 @@
 
         <p id="status" class="status" role="status" aria-live="polite">Preparing demo spectrum...</p>
 
+        <div class="crop-toolbar">
+          <span class="crop-toolbar-label">CROP RECTANGLE</span>
+          <button id="reset-crop" class="reset-button" type="button">Reset crop</button>
+        </div>
+
         <figure class="preview-frame">
-          <canvas id="preview" width="640" height="360" aria-label="Live or synthetic spectrum image"></canvas>
+          <div id="preview-stage" class="preview-stage">
+            <canvas id="preview" width="640" height="360" aria-label="Live or synthetic spectrum image"></canvas>
+            <canvas id="crop-overlay" width="640" height="360" aria-label="Crop selection overlay"></canvas>
+          </div>
           <figcaption class="frame-caption">
             <span id="frame-description">Synthetic spectrum</span>
             <span class="frame-dimensions">SOURCE FRAME <span id="frame-size">640 × 360</span></span>
           </figcaption>
         </figure>
 
+        <section class="strip-section" aria-labelledby="strip-title">
+          <div class="strip-heading">
+            <h2 id="strip-title">Cropped spectrum</h2>
+            <span id="crop-size" class="frame-dimensions">512 × 72 px</span>
+          </div>
+          <figure class="strip-frame">
+            <canvas id="crop-strip" width="640" height="90" aria-label="Live preview of the selected crop"></canvas>
+          </figure>
+        </section>
+
         <footer class="workspace-footer">
           <span class="signal-mark" aria-hidden="true"></span>
           <span id="source-detail">Demo peaks at 160, 320, and 470 px</span>
-          <span class="footer-tag">IMAGE ONLY · NO ANALYSIS</span>
+          <span class="footer-tag">CROP ONLY · NO ANALYSIS</span>
         </footer>
 
         <video id="camera-video" playsinline muted aria-hidden="true"></video>

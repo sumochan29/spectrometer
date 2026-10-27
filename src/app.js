@@ -1,12 +1,15 @@
 import { createCamera } from './camera.js';
+import { createCropController } from './crop.js';
 import { createSyntheticRenderer, SYNTHETIC_PEAKS } from './synthetic.js';
 
 const canvas = document.querySelector('#preview');
 const context = canvas.getContext('2d', { willReadFrequently: true });
+const previewStage = document.querySelector('#preview-stage');
 const video = document.querySelector('#camera-video');
 const status = document.querySelector('#status');
 const frameDescription = document.querySelector('#frame-description');
 const frameSize = document.querySelector('#frame-size');
+const cropSize = document.querySelector('#crop-size');
 const sourceDetail = document.querySelector('#source-detail');
 const sourceOptions = document.querySelectorAll('input[name="source"]');
 
@@ -20,6 +23,12 @@ const camera = createCamera({
   status,
 });
 
+const crop = createCropController({
+  sourceCanvas: canvas,
+  overlayCanvas: document.querySelector('#crop-overlay'),
+  stripCanvas: document.querySelector('#crop-strip'),
+});
+
 function showStatus(message, state = 'normal') {
   status.textContent = message;
   status.dataset.state = state;
@@ -29,6 +38,7 @@ function setCanvasSize(width, height) {
   if (canvas.width === width && canvas.height === height) return;
   canvas.width = width;
   canvas.height = height;
+  previewStage.style.aspectRatio = `${width} / ${height}`;
   frameSize.textContent = `${width} × ${height}`;
 }
 
@@ -53,6 +63,9 @@ function renderFrame() {
   }
 
   frameSize.textContent = `${canvas.width} × ${canvas.height}`;
+  crop.update();
+  const rectangle = crop.getRect();
+  cropSize.textContent = `${Math.round(rectangle.width)} × ${Math.round(rectangle.height)} px`;
   requestAnimationFrame(renderFrame);
 }
 
@@ -76,6 +89,8 @@ sourceOptions.forEach((option) => {
     if (option.checked) setMode(option.value);
   });
 });
+
+document.querySelector('#reset-crop').addEventListener('click', () => crop.reset());
 
 setMode('demo');
 requestAnimationFrame(renderFrame);
