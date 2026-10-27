@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101619">
+    <title>Webcam Spectrometer</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="src/app.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="wordmark" href="./" aria-label="Webcam Spectrometer home">
+          <span class="wordmark-mark" aria-hidden="true"></span>
+          <span>Webcam Spectrometer</span>
+        </a>
+        <span class="edition">M1 · LIVE VIEW</span>
+      </header>
+
+      <section class="workspace" aria-labelledby="page-title">
+        <div class="workspace-heading">
+          <div>
+            <p class="eyebrow">OPTICAL INSTRUMENT / 01</p>
+            <h1 id="page-title">Spectrum preview</h1>
+          </div>
+          <p class="workspace-note">Live sensor image</p>
+        </div>
+
+        <div class="source-bar">
+          <fieldset class="source-switch">
+            <legend>Image source</legend>
+            <label class="source-option">
+              <input type="radio" name="source" value="camera">
+              <span>Webcam</span>
+            </label>
+            <label class="source-option">
+              <input type="radio" name="source" value="demo" checked>
+              <span>Demo</span>
+            </label>
+          </fieldset>
+
+          <div class="camera-controls">
+            <label class="camera-label" for="camera-select">Camera</label>
+            <select id="camera-select" disabled>
+              <option value="">Searching for cameras...</option>
+            </select>
+            <button id="camera-button" class="camera-button" type="button" disabled>
+              <span class="button-indicator" aria-hidden="true"></span>
+              Start camera
+            </button>
+          </div>
+        </div>
+
+        <p id="status" class="status" role="status" aria-live="polite">Preparing demo spectrum...</p>
+
+        <figure class="preview-frame">
+          <canvas id="preview" width="640" height="360" aria-label="Live or synthetic spectrum image"></canvas>
+          <figcaption class="frame-caption">
+            <span id="frame-description">Synthetic spectrum</span>
+            <span class="frame-dimensions">SOURCE FRAME <span id="frame-size">640 × 360</span></span>
+          </figcaption>
+        </figure>
+
+        <footer class="workspace-footer">
+          <span class="signal-mark" aria-hidden="true"></span>
+          <span id="source-detail">Demo peaks at 160, 320, and 470 px</span>
+          <span class="footer-tag">IMAGE ONLY · NO ANALYSIS</span>
+        </footer>
+
+        <video id="camera-video" playsinline muted aria-hidden="true"></video>
+      </section>
+    </main>
+  </body>
+</html>
