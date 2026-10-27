@@ -116,6 +116,7 @@ h1 {
   font-size: 30px;
   font-weight: 600;
   line-height: 1.2;
+  font-family: 'Press Start 2P', var(--mono);
 }
 
 .workspace-note {
