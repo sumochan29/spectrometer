@@ -21,6 +21,8 @@ const camera = createCamera({
   selector: document.querySelector('#camera-select'),
   button: document.querySelector('#camera-button'),
   status,
+  exposureControls: document.querySelector('#exposure-controls'),
+  exposureNotice: document.querySelector('#exposure-notice'),
 });
 
 const crop = createCropController({

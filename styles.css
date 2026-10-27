@@ -228,6 +228,75 @@ select:disabled,
   cursor: pointer;
 }
 
+.exposure-panel {
+  padding: 18px 2px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.exposure-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.exposure-heading .eyebrow {
+  margin-bottom: 6px;
+}
+
+.exposure-heading h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.exposure-badge {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
+.exposure-notice {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.exposure-notice[data-state='warning'] {
+  color: #ffb393;
+}
+
+.exposure-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 18px 24px;
+  margin-top: 15px;
+}
+
+.exposure-control-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+  color: #c5d0ca;
+  font-size: 11px;
+}
+
+.exposure-control-heading output {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.exposure-control input[type='range'] {
+  display: block;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .button-indicator,
 .signal-mark {
   width: 7px;
@@ -435,6 +504,11 @@ select:disabled,
 
   .camera-button {
     min-width: 0;
+  }
+
+  .exposure-controls {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 
   .frame-caption {
