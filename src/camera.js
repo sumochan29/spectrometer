@@ -263,5 +263,8 @@ export function createCamera({ video, selector, button, status, exposureControls
   }
 
   setEnabled(false);
-  return { setEnabled };
+  return {
+    setEnabled,
+    getDeviceLabel: () => stream?.getVideoTracks()[0]?.label || selector.value || 'Unknown camera',
+  };
 }

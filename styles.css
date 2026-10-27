@@ -562,6 +562,10 @@ select:disabled,
   aspect-ratio: 25 / 11.5;
 }
 
+#spectrum-graph.is-picking-point {
+  cursor: crosshair;
+}
+
 .saturation-warning {
   margin: 12px 0 0;
   padding: 10px 12px;
@@ -586,6 +590,123 @@ select:disabled,
   padding: 15px 2px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.calibration-section {
+  margin-top: 40px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.calibration-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.calibration-heading .eyebrow {
+  margin-bottom: 7px;
+}
+
+.calibration-heading h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.calibration-assignment,
+.calibration-fit-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.calibration-assignment label,
+.calibration-fit-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.calibration-assignment select,
+.calibration-fit-controls select,
+.calibration-assignment input {
+  width: 190px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: #12191b;
+  color: #e9eee9;
+  font-size: 12px;
+}
+
+.calibration-assignment input::placeholder {
+  color: #66736f;
+}
+
+.calibration-status {
+  min-height: 18px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.calibration-status[data-state='warning'] {
+  color: #ffb393;
+}
+
+.calibration-quality {
+  margin: 16px 0 0;
+  color: #c8f169;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.calibration-points {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calibration-point {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid #263235;
+  color: #c4cfca;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.calibration-point button {
+  border: 0;
+  background: transparent;
+  color: #ff9a83;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.calibration-point button:hover {
+  color: #ffc0ae;
+}
+
+.calibration-fit-controls button:disabled,
+.calibration-assignment button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.calibration-heading [hidden] {
+  display: none;
 }
 
 .tests-link {

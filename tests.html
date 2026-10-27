@@ -7,6 +7,16 @@
     <link rel="stylesheet" href="styles.css">
     <script type="module">
       import { accumulate, extractSpectrum } from './src/extract.js';
+      import {
+        calibrationInvalidationReason,
+        calibrationRestoreReason,
+        createCalibrationRecord,
+        fitCalibration,
+        nmToPixel,
+        pixelToNm,
+        restoreCalibrationRecord,
+      } from './src/calibrate.js';
+      import { drawGraph, graphPixelFromClientX } from './src/graph.js';
 
       const results = document.querySelector('#test-results');
       const summary = document.querySelector('#test-summary');
@@ -83,6 +93,132 @@
         assertArray(average.saturatedColumns, [1], 'current-frame saturation');
       });
 
+      test('fits two calibration points exactly', () => {
+        const calibration = fitCalibration([{ px: 20, nm: 400 }, { px: 220, nm: 500 }], 1, { minPx: 0, maxPx: 256 });
+        assert(Math.abs(pixelToNm(calibration, 20) - 400) < 1e-8, 'first point should map exactly');
+        assert(Math.abs(pixelToNm(calibration, 220) - 500) < 1e-8, 'second point should map exactly');
+      });
+
+      test('inverts calibrated wavelengths within 0.01 pixel', () => {
+        const calibration = fitCalibration([{ px: 0, nm: 405 }, { px: 255, nm: 546 }], 1);
+        [0, 27.5, 127.25, 255].forEach((pixel) => {
+          assert(Math.abs(nmToPixel(calibration, pixelToNm(calibration, pixel)) - pixel) < 0.01, 'pixel round trip exceeds tolerance');
+        });
+      });
+
+      test('fits a quadratic and reports residual quality', () => {
+        const calibration = fitCalibration([
+          { px: 0, nm: 400 },
+          { px: 128, nm: 435 },
+          { px: 256, nm: 480 },
+          { px: 384, nm: 540 },
+        ], 2);
+        assert(calibration.rmsResidualNm < 1, 'quadratic residual should remain below 1 nm');
+        assert(calibration.r2 > 0.99, 'quadratic R² should exceed 0.99');
+        assert(calibration.residuals.length === 4, 'each point should have a residual');
+      });
+
+      test('shows nonzero residuals for a wrong wavelength assignment', () => {
+        const calibration = fitCalibration([
+          { px: 0, nm: 404.66 },
+          { px: 128, nm: 546.074 },
+          { px: 256, nm: 435.833 },
+        ], 1);
+        assert(calibration.residuals.some((point) => Math.abs(point.residualNm) > 20), 'bad assignment should be visible in residuals');
+        assert(calibration.rmsResidualNm > 1, 'bad assignment should increase RMS residual');
+      });
+
+      test('rejects a non-monotonic calibration fit', () => {
+        let rejected = false;
+        try {
+          fitCalibration([{ px: 0, nm: 0 }, { px: 128, nm: 100 }, { px: 256, nm: 50 }], 2);
+        } catch (error) {
+          rejected = /monotonic/.test(error.message);
+        }
+        assert(rejected, 'fit should be rejected when it reverses across the pixel domain');
+      });
+
+      test('invalidates horizontal crop changes but preserves vertical-only changes', () => {
+        const previous = {
+          cropRect: { x: 10, y: 20, width: 200, height: 40 },
+          videoResolution: { width: 640, height: 360 },
+          cameraDeviceLabel: 'Spectrometer camera',
+        };
+        const vertical = { ...previous, cropRect: { ...previous.cropRect, y: 28, height: 24 } };
+        const horizontal = { ...previous, cropRect: { ...previous.cropRect, x: 11 } };
+        const width = { ...previous, cropRect: { ...previous.cropRect, width: 201 } };
+        assert(calibrationInvalidationReason(previous, vertical) === null, 'vertical-only crop change must remain valid');
+        assert(calibrationInvalidationReason(previous, horizontal) === 'crop x-range or width changed', 'x-offset change must invalidate');
+        assert(calibrationInvalidationReason(previous, width) === 'crop x-range or width changed', 'width change must invalidate');
+      });
+
+      test('invalidates camera and video-resolution changes', () => {
+        const previous = {
+          cropRect: { x: 10, y: 20, width: 200, height: 40 },
+          videoResolution: { width: 640, height: 360 },
+          cameraDeviceLabel: 'Spectrometer camera',
+        };
+        assert(calibrationInvalidationReason(previous, { ...previous, cameraDeviceLabel: 'Laptop camera' }) === 'selected camera changed', 'camera change must invalidate');
+        assert(calibrationInvalidationReason(previous, { ...previous, videoResolution: { width: 1280, height: 720 } }) === 'video resolution changed', 'resolution change must invalidate');
+      });
+
+      test('restores only when camera and resolution still match', () => {
+        const saved = {
+          cropRect: { x: 10, y: 20, width: 200, height: 40 },
+          videoResolution: { width: 640, height: 360 },
+          cameraDeviceLabel: 'Spectrometer camera',
+        };
+        assert(calibrationRestoreReason(saved, saved) === null, 'matching capture should be restorable');
+        assert(calibrationRestoreReason(saved, { ...saved, cameraDeviceLabel: 'Laptop camera' }) === 'saved calibration belongs to a different camera', 'camera mismatch should block restore');
+        assert(calibrationRestoreReason(saved, { ...saved, videoResolution: { width: 1280, height: 720 } }) === 'saved calibration belongs to a different video resolution', 'resolution mismatch should block restore');
+      });
+
+      test('saves and restores points, coefficients, crop, resolution, and camera', () => {
+        const points = [{ px: 20, nm: 404.66 }, { px: 220, nm: 546.074 }];
+        const calibration = fitCalibration(points, 1, { minPx: 0, maxPx: 256 });
+        const record = createCalibrationRecord(points, 1, calibration, {
+          cropRect: { x: 10, y: 20, width: 256, height: 40 },
+          videoResolution: { width: 640, height: 360 },
+          cameraDeviceLabel: 'Spectrometer camera',
+        });
+        const storageKey = 'webcam-spectrometer-calibration-v1';
+        localStorage.setItem(storageKey, JSON.stringify(record));
+        const stored = JSON.parse(localStorage.getItem(storageKey));
+        localStorage.removeItem(storageKey);
+        const restored = restoreCalibrationRecord(stored, { minPx: 0, maxPx: 256 });
+        assert(stored.coefficients.length === 2, 'coefficients must be saved');
+        assert(stored.cropRect.x === 10 && stored.cropRect.width === 256, 'crop rectangle must be saved');
+        assert(stored.videoResolution.width === 640 && stored.videoResolution.height === 360, 'video resolution must be saved');
+        assert(stored.cameraDeviceLabel === 'Spectrometer camera', 'camera label must be saved');
+        assert(Math.abs(pixelToNm(restored.calibration, 220) - 546.074) < 1e-8, 'restored fit should map the saved point');
+      });
+
+      test('maps graph clicks and displays the calibrated wavelength axis', () => {
+        const calibration = fitCalibration([{ px: 100, nm: 400 }, { px: 200, nm: 500 }], 1, { minPx: 100, maxPx: 200 });
+        const labels = [];
+        const context = {
+          clearRect() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+          fillText(value) { labels.push(value); }, save() {}, restore() {}, translate() {}, rotate() {}, setLineDash() {},
+        };
+        const canvas = {
+          width: 1000,
+          height: 460,
+          getContext: () => context,
+          getBoundingClientRect: () => ({ left: 10, top: 20, width: 500, height: 230 }),
+        };
+        const midpointX = 10 + (66 + (1000 - 66 - 20) / 2) / 1000 * 500;
+        const pixel = graphPixelFromClientX(canvas, midpointX, 100, 101, calibration);
+        assert(Math.abs(pixel - 150) < 0.01, 'graph midpoint should map to midpoint source pixel');
+        drawGraph(canvas, { combined: new Float32Array(101) }, new Set(), {
+          pixelOffset: 100,
+          calibration,
+          calibrationPoints: [{ px: 100, nm: 400 }],
+        });
+        assert(labels.includes('wavelength (nm)'), 'axis title should switch to wavelength');
+        assert(labels.includes('400.0') && labels.includes('500.0'), 'axis ticks should use nm');
+        assert(labels.includes('400 nm'), 'assigned wavelength should be marked');
+      });
+
       summary.textContent = `${passed} passed, ${failed} failed`;
       summary.dataset.state = failed === 0 ? 'pass' : 'fail';
     </script>
@@ -90,8 +226,8 @@
   <body>
     <main class="test-shell">
       <a class="test-back-link" href="./">Back to Webcam Spectrometer</a>
-      <p class="eyebrow">M3 REGRESSION</p>
-      <h1>Extraction tests</h1>
+      <p class="eyebrow">M3 / M5 REGRESSION</p>
+      <h1>Spectrometer tests</h1>
       <p id="test-summary" class="test-summary">Running tests...</p>
       <ol id="test-results" class="test-results"></ol>
     </main>

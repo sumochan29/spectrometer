@@ -1,3 +1,5 @@
+import { nmToPixel, pixelToNm } from './calibrate.js';
+
 const CHANNEL_STYLES = {
 	r: { color: '#ff7768', width: 1.8 },
 	g: { color: '#c8f169', width: 1.8 },
@@ -7,7 +9,11 @@ const CHANNEL_STYLES = {
 
 const PLOT = { left: 66, top: 20, right: 20, bottom: 58 };
 
-export function drawGraph(canvas, spectra, visibleChannels, { pixelOffset = 0 } = {}) {
+export function drawGraph(canvas, spectra, visibleChannels, {
+	pixelOffset = 0,
+	calibration = null,
+	calibrationPoints = [],
+} = {}) {
 	const context = canvas.getContext('2d');
 	const width = canvas.width;
 	const height = canvas.height;
@@ -44,8 +50,14 @@ export function drawGraph(canvas, spectra, visibleChannels, { pixelOffset = 0 } 
 		context.fillStyle = '#91a09c';
 		context.textAlign = 'center';
 		context.textBaseline = 'top';
-		const pixel = spectrumWidth > 0 ? pixelOffset + Math.round((spectrumWidth - 1) * tick / 4) : pixelOffset;
-		context.fillText(String(pixel), x, height - PLOT.bottom + 10);
+		const fraction = tick / 4;
+		const pixel = spectrumWidth > 0 ? pixelOffset + Math.round((spectrumWidth - 1) * fraction) : pixelOffset;
+		const firstNm = spectrumWidth > 0 && calibration ? pixelToNm(calibration, pixelOffset) : 0;
+		const lastNm = spectrumWidth > 0 && calibration ? pixelToNm(calibration, pixelOffset + spectrumWidth - 1) : 0;
+		const axisValue = calibration
+			? `${(firstNm + fraction * (lastNm - firstNm)).toFixed(1)}`
+			: String(pixel);
+		context.fillText(axisValue, x, height - PLOT.bottom + 10);
 	}
 
 	context.strokeStyle = '#71807a';
@@ -58,7 +70,7 @@ export function drawGraph(canvas, spectra, visibleChannels, { pixelOffset = 0 } 
 	context.fillStyle = '#b9c4bd';
 	context.textAlign = 'center';
 	context.textBaseline = 'bottom';
-	context.fillText('pixel index', PLOT.left + plotWidth / 2, height - 8);
+	context.fillText(calibration ? 'wavelength (nm)' : 'pixel index', PLOT.left + plotWidth / 2, height - 8);
 	context.save();
 	context.translate(16, PLOT.top + plotHeight / 2);
 	context.rotate(-Math.PI / 2);
@@ -84,7 +96,11 @@ export function drawGraph(canvas, spectra, visibleChannels, { pixelOffset = 0 } 
 		context.beginPath();
 
 		for (let index = 0; index < values.length; index += 1) {
-			const x = PLOT.left + (values.length > 1 ? plotWidth * index / (values.length - 1) : 0);
+			const pixel = pixelOffset + index;
+			const x = calibration
+				? PLOT.left + plotWidth * (pixelToNm(calibration, pixel) - pixelToNm(calibration, pixelOffset))
+					/ (pixelToNm(calibration, pixelOffset + values.length - 1) - pixelToNm(calibration, pixelOffset))
+				: PLOT.left + (values.length > 1 ? plotWidth * index / (values.length - 1) : 0);
 			const value = Math.max(0, Math.min(255, values[index]));
 			const y = PLOT.top + plotHeight * (1 - value / 255);
 			if (index === 0) context.moveTo(x, y);
@@ -93,4 +109,44 @@ export function drawGraph(canvas, spectra, visibleChannels, { pixelOffset = 0 } 
 
 		context.stroke();
 	});
+
+	if (calibration && spectrumWidth > 0) {
+		context.save();
+		context.setLineDash([4, 4]);
+		calibrationPoints.forEach(({ px, nm }) => {
+			if (px < pixelOffset || px > pixelOffset + spectrumWidth - 1) return;
+			const x = PLOT.left + plotWidth * (pixelToNm(calibration, px) - pixelToNm(calibration, pixelOffset))
+				/ (pixelToNm(calibration, pixelOffset + spectrumWidth - 1) - pixelToNm(calibration, pixelOffset));
+			context.strokeStyle = '#f5f1c8';
+			context.lineWidth = 1;
+			context.beginPath();
+			context.moveTo(x, PLOT.top);
+			context.lineTo(x, height - PLOT.bottom);
+			context.stroke();
+			context.setLineDash([]);
+			context.fillStyle = '#f5f1c8';
+			context.textAlign = 'center';
+			context.textBaseline = 'top';
+			context.fillText(`${nm} nm`, x, PLOT.top + 4);
+			context.setLineDash([4, 4]);
+		});
+		context.restore();
+	}
+}
+
+export function graphPixelFromClientX(canvas, clientX, pixelOffset, spectrumWidth, calibration = null) {
+	if (spectrumWidth < 1) return null;
+	const bounds = canvas.getBoundingClientRect();
+	const canvasX = (clientX - bounds.left) * (canvas.width / bounds.width);
+	const plotWidth = canvas.width - PLOT.left - PLOT.right;
+	const fraction = (canvasX - PLOT.left) / plotWidth;
+	if (fraction < 0 || fraction > 1) return null;
+	if (!calibration) return pixelOffset + fraction * (spectrumWidth - 1);
+
+	const firstPixel = pixelOffset;
+	const lastPixel = pixelOffset + spectrumWidth - 1;
+	const firstWavelength = pixelToNm(calibration, firstPixel);
+	const lastWavelength = pixelToNm(calibration, lastPixel);
+	const selectedWavelength = firstWavelength + fraction * (lastWavelength - firstWavelength);
+	return nmToPixel(calibration, selectedWavelength);
 }

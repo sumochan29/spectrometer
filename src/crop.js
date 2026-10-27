@@ -255,6 +255,22 @@ export function createCropController({ sourceCanvas, overlayCanvas, stripCanvas,
 		onChange({ ...rectangle });
 	}
 
+	function setRect(nextRectangle) {
+		syncSourceSize();
+		if (sourceWidth < MIN_CROP_SIZE || sourceHeight < MIN_CROP_SIZE) return;
+		const x = clamp(Number(nextRectangle.x) || 0, 0, sourceWidth - MIN_CROP_SIZE);
+		const y = clamp(Number(nextRectangle.y) || 0, 0, sourceHeight - MIN_CROP_SIZE);
+		rectangle = {
+			x,
+			y,
+			width: clamp(Number(nextRectangle.width) || MIN_CROP_SIZE, MIN_CROP_SIZE, sourceWidth - x),
+			height: clamp(Number(nextRectangle.height) || MIN_CROP_SIZE, MIN_CROP_SIZE, sourceHeight - y),
+		};
+		drawOverlay();
+		drawStrip();
+		onChange({ ...rectangle });
+	}
+
 	overlayCanvas.addEventListener('pointerdown', handlePointerDown);
 	overlayCanvas.addEventListener('pointermove', handlePointerMove);
 	overlayCanvas.addEventListener('pointerup', handlePointerUp);
@@ -264,6 +280,7 @@ export function createCropController({ sourceCanvas, overlayCanvas, stripCanvas,
 	return {
 		getRect: () => rectangle && { ...rectangle },
 		reset,
+		setRect,
 		update,
 	};
 }

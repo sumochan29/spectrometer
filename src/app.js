@@ -1,7 +1,15 @@
 import { createCamera } from './camera.js';
 import { createCropController } from './crop.js';
 import { accumulate, extractSpectrum } from './extract.js';
-import { drawGraph } from './graph.js';
+import {
+  calibrationInvalidationReason,
+  calibrationRestoreReason,
+  createCalibrationRecord,
+  fitCalibration,
+  restoreCalibrationRecord,
+  WAVELENGTH_PRESETS,
+} from './calibrate.js';
+import { drawGraph, graphPixelFromClientX } from './graph.js';
 import { createSyntheticRenderer, SYNTHETIC_PEAKS } from './synthetic.js';
 
 const canvas = document.querySelector('#preview');
@@ -21,6 +29,15 @@ const frameAverageInput = document.querySelector('#frame-average');
 const channelOptions = document.querySelectorAll('input[name="channel"]');
 const demoSaturationInput = document.querySelector('#demo-saturation');
 const demoSaturationControl = document.querySelector('#demo-saturation-control');
+const calibrationStatus = document.querySelector('#calibration-status');
+const calibrationQuality = document.querySelector('#calibration-quality');
+const calibrationPointsList = document.querySelector('#calibration-points');
+const wavelengthPreset = document.querySelector('#wavelength-preset');
+const wavelengthValue = document.querySelector('#wavelength-value');
+const pickCalibrationPoint = document.querySelector('#pick-calibration-point');
+const calibrationOrder = document.querySelector('#calibration-order');
+const fitCalibrationButton = document.querySelector('#fit-calibration');
+const restoreCalibrationButton = document.querySelector('#restore-calibration');
 
 let mode = 'demo';
 let drawDemoFrame = createSyntheticRenderer(context, canvas.width, canvas.height);
@@ -29,6 +46,16 @@ let frameStack = [];
 let averagedSpectrum = null;
 let lastCropKey = '';
 let lastVideoTime = -1;
+let calibrationPoints = [];
+let calibration = null;
+let calibrationMetadata = null;
+let calibrationValid = false;
+let fitOrder = 1;
+let pickingCalibrationPoint = false;
+let pendingCalibrationWavelength = null;
+let savedCalibration = null;
+let savedRestoreAttempted = false;
+const CALIBRATION_STORAGE_KEY = 'webcam-spectrometer-calibration-v1';
 const visibleChannels = new Set(
   [...channelOptions].filter((option) => option.checked).map((option) => option.value),
 );
@@ -46,6 +73,7 @@ const crop = createCropController({
   sourceCanvas: canvas,
   overlayCanvas: document.querySelector('#crop-overlay'),
   stripCanvas: document.querySelector('#crop-strip'),
+  onChange: handleCropChange,
 });
 
 function showStatus(message, state = 'normal') {
@@ -53,23 +81,229 @@ function showStatus(message, state = 'normal') {
   status.dataset.state = state;
 }
 
-function setCanvasSize(width, height) {
-  if (canvas.width === width && canvas.height === height) return;
-  canvas.width = width;
-  canvas.height = height;
-  previewStage.style.aspectRatio = `${width} / ${height}`;
-  frameSize.textContent = `${width} × ${height}`;
+function currentCropBounds() {
+  const rectangle = crop.getRect();
+  const minPx = Math.max(0, Math.floor(rectangle.x));
+  const maxPx = Math.min(canvas.width, Math.ceil(rectangle.x + rectangle.width)) - 1;
+  return { minPx, maxPx };
 }
 
-function clearFrameStack() {
-  frameStack = [];
-  averagedSpectrum = null;
+function currentCalibrationMetadata() {
+  return {
+    cropRect: { ...crop.getRect() },
+    videoResolution: { width: canvas.width, height: canvas.height },
+    cameraDeviceLabel: mode === 'demo' ? 'Synthetic demo' : camera.getDeviceLabel(),
+  };
+}
+
+function savedCalibrationData() {
+  return createCalibrationRecord(calibrationPoints, fitOrder, calibration, calibrationMetadata);
+}
+
+function saveCalibration() {
+  savedCalibration = savedCalibrationData();
+  try {
+    localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify(savedCalibration));
+    restoreCalibrationButton.hidden = false;
+  } catch {
+    calibrationStatus.textContent = 'Calibration is active, but browser storage is unavailable.';
+    calibrationStatus.dataset.state = 'warning';
+  }
+}
+
+function clearSavedCalibration() {
+  savedCalibration = null;
+  restoreCalibrationButton.hidden = true;
+  try {
+    localStorage.removeItem(CALIBRATION_STORAGE_KEY);
+  } catch {
+    // Storage may be disabled by the browser.
+  }
+}
+
+function setCalibrationStatus(message, warning = false) {
+  calibrationStatus.textContent = message;
+  calibrationStatus.dataset.state = warning ? 'warning' : 'normal';
 }
 
 function updateGraph() {
   drawGraph(graphCanvas, averagedSpectrum, visibleChannels, {
     pixelOffset: averagedSpectrum?.pixelOffset ?? 0,
+    calibration: calibrationValid ? calibration : null,
+    calibrationPoints: calibrationValid ? calibrationPoints : [],
   });
+}
+
+function renderCalibrationPoints() {
+  calibrationPointsList.replaceChildren();
+  const residuals = calibrationValid ? calibration.residuals : [];
+
+  calibrationPoints.forEach((point, index) => {
+    const item = document.createElement('li');
+    item.className = 'calibration-point';
+    const residual = residuals[index];
+    const detail = document.createElement('span');
+    const residualText = residual ? ` · residual ${residual.residualNm >= 0 ? '+' : ''}${residual.residualNm.toFixed(3)} nm` : '';
+    detail.textContent = `${point.px.toFixed(2)} px → ${point.nm} nm${residualText}`;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', `Remove calibration point at ${point.px.toFixed(2)} pixels`);
+    remove.addEventListener('click', () => {
+      calibrationPoints.splice(index, 1);
+      if (calibrationPoints.length < 2) {
+        calibration = null;
+        calibrationMetadata = null;
+        calibrationValid = false;
+        clearSavedCalibration();
+        setCalibrationStatus('Add at least two points to fit a calibration.');
+        renderCalibrationUi();
+        updateGraph();
+      } else {
+        if (fitOrder === 2 && calibrationPoints.length < 3) {
+          fitOrder = 1;
+          calibrationOrder.value = '1';
+        }
+        fitCurrentCalibration();
+      }
+    });
+
+    item.append(detail, remove);
+    calibrationPointsList.append(item);
+  });
+}
+
+function renderCalibrationUi() {
+  const orderTwoOption = calibrationOrder.querySelector('option[value="2"]');
+  orderTwoOption.disabled = calibrationPoints.length < 3;
+  if (fitOrder === 2 && calibrationPoints.length < 3) {
+    fitOrder = 1;
+    calibrationOrder.value = '1';
+  }
+  fitCalibrationButton.disabled = calibrationPoints.length < fitOrder + 1;
+
+  if (calibrationValid && calibration) {
+    const r2 = calibrationPoints.length >= 3 ? ` · R² ${calibration.r2.toFixed(5)}` : '';
+    calibrationQuality.textContent = `${fitOrder === 1 ? 'Linear' : 'Quadratic'} fit · RMS ${calibration.rmsResidualNm.toFixed(4)} nm${r2}`;
+  } else if (calibrationPoints.length >= 2 && !calibrationValid) {
+    calibrationQuality.textContent = 'Calibration inactive · graph uses pixel axis';
+  } else {
+    calibrationQuality.textContent = 'No calibration fit';
+  }
+
+  renderCalibrationPoints();
+}
+
+function fitCurrentCalibration() {
+  if (calibrationPoints.length < fitOrder + 1) {
+    calibration = null;
+    calibrationValid = false;
+    setCalibrationStatus(`At least ${fitOrder + 1} points are required for this fit order.`, true);
+    renderCalibrationUi();
+    updateGraph();
+    return false;
+  }
+
+  try {
+    calibration = fitCalibration(calibrationPoints, fitOrder, currentCropBounds());
+    calibrationMetadata = currentCalibrationMetadata();
+    calibrationValid = true;
+    setCalibrationStatus('Calibration is active. Click Fit calibration after changing assignments.');
+    saveCalibration();
+    renderCalibrationUi();
+    updateGraph();
+    return true;
+  } catch (error) {
+    calibration = null;
+    calibrationValid = false;
+    setCalibrationStatus(error.message, true);
+    renderCalibrationUi();
+    updateGraph();
+    return false;
+  }
+}
+
+function invalidateCalibration(reason) {
+  if (!calibrationValid) return;
+  calibrationValid = false;
+  setCalibrationStatus(`Calibration no longer valid: ${reason}. Refit the points or restore a matching saved setup.`, true);
+  renderCalibrationUi();
+  updateGraph();
+}
+
+function handleCropChange(nextRectangle) {
+  if (!calibrationValid || !calibrationMetadata) return;
+  const reason = calibrationInvalidationReason(calibrationMetadata, {
+    ...currentCalibrationMetadata(),
+    cropRect: nextRectangle,
+  });
+  if (reason) invalidateCalibration(reason);
+}
+
+function applySavedCalibration(data) {
+  const restored = restoreCalibrationRecord(data, currentCropBounds());
+  calibrationPoints = restored.points;
+  fitOrder = restored.fitOrder;
+  calibrationOrder.value = String(fitOrder);
+  calibration = restored.calibration;
+  calibrationMetadata = currentCalibrationMetadata();
+  calibrationValid = true;
+  savedRestoreAttempted = true;
+  setCalibrationStatus('Saved calibration restored for this camera and crop.');
+  renderCalibrationUi();
+  updateGraph();
+}
+
+function maybeRestoreSavedCalibration() {
+  if (!savedCalibration || savedRestoreAttempted || calibrationValid) return;
+  if (mode === 'demo' && savedCalibration.cameraDeviceLabel !== 'Synthetic demo') return;
+  savedRestoreAttempted = true;
+  const restoreReason = calibrationRestoreReason(savedCalibration, currentCalibrationMetadata());
+  if (restoreReason) {
+    setCalibrationStatus(`${restoreReason}.`, true);
+    restoreCalibrationButton.hidden = false;
+    return;
+  }
+
+  try {
+    crop.setRect(savedCalibration.cropRect);
+    applySavedCalibration(savedCalibration);
+  } catch {
+    setCalibrationStatus('Saved calibration could not be restored; add points and recalibrate.', true);
+    clearSavedCalibration();
+  }
+}
+
+function loadSavedCalibration() {
+  try {
+    const stored = localStorage.getItem(CALIBRATION_STORAGE_KEY);
+    if (!stored) return;
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed.points) || parsed.points.length < 2 || ![1, 2].includes(parsed.fitOrder)) return;
+    savedCalibration = parsed;
+    restoreCalibrationButton.hidden = false;
+  } catch {
+    clearSavedCalibration();
+  }
+}
+
+function setCanvasSize(width, height) {
+  if (canvas.width === width && canvas.height === height) return;
+  const resolutionChanged = canvas.width !== width || canvas.height !== height;
+  canvas.width = width;
+  canvas.height = height;
+  previewStage.style.aspectRatio = `${width} / ${height}`;
+  frameSize.textContent = `${width} × ${height}`;
+  if (resolutionChanged && calibrationMetadata) {
+    const reason = calibrationInvalidationReason(calibrationMetadata, currentCalibrationMetadata());
+    if (reason) invalidateCalibration(reason);
+  }
+}
+
+function clearFrameStack() {
+  frameStack = [];
+  averagedSpectrum = null;
 }
 
 function updateSpectrum(rectangle) {
@@ -98,6 +332,7 @@ function updateSpectrum(rectangle) {
   );
   averagedSpectrum.pixelOffset = x;
   graphReadout.textContent = `${width} px · ${frameStack.length} / ${frameLimit} frames`;
+  maybeRestoreSavedCalibration();
   updateGraph();
 
   if (currentSpectrum.saturatedColumns.length > 0) {
@@ -155,10 +390,12 @@ function renderFrame() {
 }
 
 function setMode(nextMode) {
+  if (mode !== nextMode) invalidateCalibration('camera source changed');
   mode = nextMode;
   clearFrameStack();
   lastCropKey = '';
   lastVideoTime = -1;
+  savedRestoreAttempted = false;
   const isDemo = mode === 'demo';
   demoSaturationControl.hidden = !isDemo;
   camera.setEnabled(!isDemo);
@@ -177,6 +414,99 @@ sourceOptions.forEach((option) => {
   option.addEventListener('change', () => {
     if (option.checked) setMode(option.value);
   });
+});
+
+function selectedWavelength() {
+  if (wavelengthPreset.value === 'custom' || wavelengthPreset.value === '') {
+    return wavelengthValue.value === '' ? null : Number(wavelengthValue.value);
+  }
+  return Number(wavelengthPreset.value);
+}
+
+function updatePickButton() {
+  const wavelength = selectedWavelength();
+  pickCalibrationPoint.disabled = !Number.isFinite(wavelength) || wavelength <= 0;
+}
+
+function setupWavelengthPresets() {
+  wavelengthPreset.replaceChildren(new Option('Choose preset', ''));
+  WAVELENGTH_PRESETS.forEach(({ label, nm }) => wavelengthPreset.add(new Option(label, String(nm))));
+  wavelengthPreset.add(new Option('Custom', 'custom'));
+}
+
+wavelengthPreset.addEventListener('change', () => {
+  wavelengthValue.value = wavelengthPreset.value && wavelengthPreset.value !== 'custom'
+    ? wavelengthPreset.value
+    : '';
+  updatePickButton();
+});
+
+wavelengthValue.addEventListener('input', () => {
+  if (wavelengthValue.value !== '') wavelengthPreset.value = 'custom';
+  updatePickButton();
+});
+
+pickCalibrationPoint.addEventListener('click', () => {
+  const wavelength = selectedWavelength();
+  if (!Number.isFinite(wavelength) || wavelength <= 0) return;
+  pickingCalibrationPoint = !pickingCalibrationPoint;
+  pendingCalibrationWavelength = pickingCalibrationPoint ? wavelength : null;
+  pickCalibrationPoint.textContent = pickingCalibrationPoint ? 'Cancel point' : 'Pick on graph';
+  graphCanvas.classList.toggle('is-picking-point', pickingCalibrationPoint);
+  setCalibrationStatus(pickingCalibrationPoint
+    ? `Click the graph at ${pendingCalibrationWavelength} nm.`
+    : 'Point selection canceled.');
+});
+
+graphCanvas.addEventListener('click', (event) => {
+  if (!pickingCalibrationPoint || !averagedSpectrum) return;
+  const pixel = graphPixelFromClientX(
+    graphCanvas,
+    event.clientX,
+    averagedSpectrum.pixelOffset,
+    averagedSpectrum.combined.length,
+    calibrationValid ? calibration : null,
+  );
+  if (pixel === null) return;
+
+  calibrationPoints.push({ px: pixel, nm: pendingCalibrationWavelength });
+  pickingCalibrationPoint = false;
+  pendingCalibrationWavelength = null;
+  pickCalibrationPoint.textContent = 'Pick on graph';
+  graphCanvas.classList.remove('is-picking-point');
+  if (calibrationPoints.length >= fitOrder + 1) {
+    fitCurrentCalibration();
+  } else {
+    setCalibrationStatus('Add one more wavelength point to fit a linear calibration.');
+    renderCalibrationUi();
+  }
+});
+
+calibrationOrder.addEventListener('change', () => {
+  fitOrder = Number(calibrationOrder.value);
+  if (calibrationPoints.length >= fitOrder + 1) fitCurrentCalibration();
+});
+
+fitCalibrationButton.addEventListener('click', () => fitCurrentCalibration());
+
+restoreCalibrationButton.addEventListener('click', () => {
+  if (!savedCalibration) return;
+  const restoreReason = calibrationRestoreReason(savedCalibration, currentCalibrationMetadata());
+  if (restoreReason) {
+    setCalibrationStatus(`${restoreReason}.`, true);
+    return;
+  }
+  try {
+    crop.setRect(savedCalibration.cropRect);
+    applySavedCalibration(savedCalibration);
+  } catch (error) {
+    setCalibrationStatus(`Saved calibration could not be restored: ${error.message}`, true);
+  }
+});
+
+document.querySelector('#camera-select').addEventListener('change', () => {
+  savedRestoreAttempted = false;
+  invalidateCalibration('selected camera changed');
 });
 
 channelOptions.forEach((option) => {
@@ -202,5 +532,9 @@ demoSaturationInput.addEventListener('change', () => {
 
 document.querySelector('#reset-crop').addEventListener('click', () => crop.reset());
 
+setupWavelengthPresets();
+loadSavedCalibration();
+renderCalibrationUi();
+updateGraph();
 setMode('demo');
 requestAnimationFrame(renderFrame);

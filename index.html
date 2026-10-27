@@ -15,7 +15,7 @@
           <span class="wordmark-mark" aria-hidden="true"></span>
           <span>Webcam Spectrometer</span>
         </a>
-        <span class="edition">M3 · SPECTRAL ANALYSIS</span>
+        <span class="edition">M5 · CALIBRATION</span>
       </header>
 
       <section class="workspace" aria-labelledby="page-title">
@@ -140,11 +140,58 @@
           <p id="saturation-warning" class="saturation-warning" role="alert" hidden></p>
         </section>
 
+        <section class="calibration-section" aria-labelledby="calibration-title">
+          <div class="calibration-heading">
+            <div>
+              <p class="eyebrow">WAVELENGTH REFERENCE</p>
+              <h2 id="calibration-title">Calibration</h2>
+            </div>
+            <button id="restore-calibration" class="reset-button" type="button" hidden>Restore saved</button>
+          </div>
+
+          <div class="calibration-assignment">
+            <label for="wavelength-preset">
+              <span>Reference line</span>
+              <select id="wavelength-preset">
+                <option value="">Choose preset</option>
+                <option value="404.66">Hg 404.66 nm</option>
+                <option value="435.833">Hg 435.833 nm</option>
+                <option value="546.074">Hg 546.074 nm</option>
+                <option value="576.96">Hg 576.96 nm</option>
+                <option value="579.07">Hg 579.07 nm</option>
+                <option value="611">Eu ~611 nm</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label for="wavelength-value">
+              <span>Wavelength (nm)</span>
+              <input id="wavelength-value" type="number" min="1" max="2000" step="any" placeholder="Enter wavelength">
+            </label>
+            <button id="pick-calibration-point" class="camera-button" type="button" disabled>Pick on graph</button>
+          </div>
+
+          <p id="calibration-status" class="calibration-status" role="status" aria-live="polite">Select a reference wavelength to add a point.</p>
+
+          <div class="calibration-fit-controls">
+            <label for="calibration-order">
+              <span>Fit order</span>
+              <select id="calibration-order">
+                <option value="1">Linear</option>
+                <option value="2" disabled>Quadratic (3+ points)</option>
+              </select>
+            </label>
+            <button id="fit-calibration" class="reset-button" type="button" disabled>Fit calibration</button>
+          </div>
+
+          <p id="calibration-quality" class="calibration-quality">No calibration fit</p>
+          <ol id="calibration-points" class="calibration-points"></ol>
+        </section>
+
         <footer class="workspace-footer">
           <span class="signal-mark" aria-hidden="true"></span>
           <span id="source-detail">Demo peaks at 160, 320, and 470 px</span>
-          <a class="tests-link" href="tests.html">Extraction tests</a>
-          <span class="footer-tag">RELATIVE INTENSITY · NO CALIBRATION</span>
+          <a class="tests-link" href="tests.html">Spectrometer tests</a>
+          <span class="footer-tag">RELATIVE INTENSITY</span>
         </footer>
 
         <video id="camera-video" playsinline muted aria-hidden="true"></video>
