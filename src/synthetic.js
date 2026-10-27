@@ -6,7 +6,7 @@ const PEAK_COLORS = [
   [255, 105, 92],
 ];
 
-export function createSyntheticRenderer(context, width, height) {
+export function createSyntheticRenderer(context, width, height, { saturate = false } = {}) {
   const image = context.createImageData(width, height);
   const { data } = image;
   const bandTop = Math.floor(height * 0.39);
@@ -36,7 +36,8 @@ export function createSyntheticRenderer(context, width, height) {
 
           for (let peak = 0; peak < centers.length; peak += 1) {
             const distance = (x - centers[peak]) / sigmas[peak];
-            const intensity = Math.exp(-0.5 * distance * distance) * 220 * bandStrength;
+            const peakLevel = saturate ? 320 : 220;
+            const intensity = Math.exp(-0.5 * distance * distance) * peakLevel * bandStrength;
             red += (PEAK_COLORS[peak][0] / 255) * intensity;
             green += (PEAK_COLORS[peak][1] / 255) * intensity;
             blue += (PEAK_COLORS[peak][2] / 255) * intensity;

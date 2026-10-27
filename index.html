@@ -15,7 +15,7 @@
           <span class="wordmark-mark" aria-hidden="true"></span>
           <span>Webcam Spectrometer</span>
         </a>
-        <span class="edition">M2 · CROP PREVIEW</span>
+        <span class="edition">M3 · SPECTRAL ANALYSIS</span>
       </header>
 
       <section class="workspace" aria-labelledby="page-title">
@@ -94,10 +94,57 @@
           </figure>
         </section>
 
+        <section class="graph-section" aria-labelledby="graph-title">
+          <div class="graph-heading">
+            <div>
+              <p class="eyebrow">LIVE MEASUREMENT</p>
+              <h2 id="graph-title">Relative spectrum</h2>
+            </div>
+            <span id="graph-readout" class="frame-dimensions">Waiting for frame</span>
+          </div>
+
+          <div class="graph-controls">
+            <fieldset class="channel-controls">
+              <legend>Visible channels</legend>
+              <label class="channel-toggle" style="--channel-color: #ff7768">
+                <input type="checkbox" name="channel" value="r">
+                <span>R</span>
+              </label>
+              <label class="channel-toggle" style="--channel-color: #c8f169">
+                <input type="checkbox" name="channel" value="g">
+                <span>G</span>
+              </label>
+              <label class="channel-toggle" style="--channel-color: #79b8ff">
+                <input type="checkbox" name="channel" value="b">
+                <span>B</span>
+              </label>
+              <label class="channel-toggle" style="--channel-color: #eef3e8">
+                <input type="checkbox" name="channel" value="combined" checked>
+                <span>Combined</span>
+              </label>
+            </fieldset>
+
+            <label class="frame-average-control" for="frame-average">
+              <span>Frames averaged</span>
+              <input id="frame-average" type="number" min="1" max="32" step="1" value="1" inputmode="numeric">
+            </label>
+            <label id="demo-saturation-control" class="demo-saturation-control">
+              <input id="demo-saturation" type="checkbox">
+              <span>Clip demo signal</span>
+            </label>
+          </div>
+
+          <figure class="graph-frame">
+            <canvas id="spectrum-graph" width="1000" height="460" aria-label="Live graph of RGB and combined intensity by pixel index"></canvas>
+          </figure>
+          <p id="saturation-warning" class="saturation-warning" role="alert" hidden></p>
+        </section>
+
         <footer class="workspace-footer">
           <span class="signal-mark" aria-hidden="true"></span>
           <span id="source-detail">Demo peaks at 160, 320, and 470 px</span>
-          <span class="footer-tag">CROP ONLY · NO ANALYSIS</span>
+          <a class="tests-link" href="tests.html">Extraction tests</a>
+          <span class="footer-tag">RELATIVE INTENSITY · NO CALIBRATION</span>
         </footer>
 
         <video id="camera-video" playsinline muted aria-hidden="true"></video>

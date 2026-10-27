@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Spectrometer extraction tests</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module">
+      import { accumulate, extractSpectrum } from './src/extract.js';
+
+      const results = document.querySelector('#test-results');
+      const summary = document.querySelector('#test-summary');
+      let passed = 0;
+      let failed = 0;
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      function assertArray(actual, expected, message) {
+        assert(actual.length === expected.length, `${message}: array length differs`);
+        expected.forEach((value, index) => {
+          assert(Math.abs(actual[index] - value) < 0.001, `${message}: index ${index} was ${actual[index]}`);
+        });
+      }
+
+      function test(name, callback) {
+        const result = document.createElement('li');
+        try {
+          callback();
+          result.className = 'test-pass';
+          result.textContent = `PASS  ${name}`;
+          passed += 1;
+        } catch (error) {
+          result.className = 'test-fail';
+          result.textContent = `FAIL  ${name}: ${error.message}`;
+          failed += 1;
+        }
+        results.append(result);
+      }
+
+      const rgba = new Uint8ClampedArray([
+        255, 0, 0, 255, 10, 20, 30, 255,
+        0, 255, 0, 255, 30, 40, 50, 255,
+      ]);
+
+      test('returns per-column channel means and combined mean', () => {
+        const spectrum = extractSpectrum(rgba, 2, 2);
+        assert(spectrum.r instanceof Float32Array, 'red channel must be Float32Array');
+        assertArray(spectrum.r, [127.5, 20], 'red');
+        assertArray(spectrum.g, [127.5, 30], 'green');
+        assertArray(spectrum.b, [0, 40], 'blue');
+        assertArray(spectrum.combined, [85, 30], 'combined');
+      });
+
+      test('selects rows and supports max channel combination', () => {
+        const spectrum = extractSpectrum(rgba, 2, 2, { rowStart: 1, rowEnd: 2, combine: 'max' });
+        assertArray(spectrum.combined, [255, 50], 'max combination');
+      });
+
+      test('supports luma combination', () => {
+        const spectrum = extractSpectrum(new Uint8ClampedArray([100, 50, 0, 255]), 1, 1, { combine: 'luma' });
+        assertArray(spectrum.combined, [57.02], 'luma combination');
+      });
+
+      test('reports saturated columns in the selected rows', () => {
+        const spectrum = extractSpectrum(rgba, 2, 2, { rowStart: 0, rowEnd: 1 });
+        assertArray(spectrum.saturatedColumns, [0], 'saturated columns');
+      });
+
+      test('accumulates frame arrays and reports current-frame saturation', () => {
+        const first = extractSpectrum(rgba, 2, 2);
+        const second = {
+          r: new Float32Array([0, 40]),
+          g: new Float32Array([0, 50]),
+          b: new Float32Array([20, 60]),
+          combined: new Float32Array([20, 50]),
+          saturatedColumns: [1],
+        };
+        const average = accumulate(first, second, 2);
+        assertArray(average.r, [63.75, 30], 'averaged red');
+        assertArray(average.combined, [52.5, 40], 'averaged combined');
+        assertArray(average.saturatedColumns, [1], 'current-frame saturation');
+      });
+
+      summary.textContent = `${passed} passed, ${failed} failed`;
+      summary.dataset.state = failed === 0 ? 'pass' : 'fail';
+    </script>
+  </head>
+  <body>
+    <main class="test-shell">
+      <a class="test-back-link" href="./">Back to Webcam Spectrometer</a>
+      <p class="eyebrow">M3 REGRESSION</p>
+      <h1>Extraction tests</h1>
+      <p id="test-summary" class="test-summary">Running tests...</p>
+      <ol id="test-results" class="test-results"></ol>
+    </main>
+  </body>
+</html>
